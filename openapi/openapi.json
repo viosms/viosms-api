@@ -1,0 +1,742 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VioSMS API",
+    "version": "1.0.0",
+    "description": "Buy virtual phone numbers and receive SMS verification codes programmatically.\n\nTypical flow: `POST /buy` -> poll `GET /status` every ~5 seconds until `SMS_RECEIVED` -> if no code arrives, `POST /cancel` (allowed 2 minutes after buying) for a refund.\n\nEach number is valid for 20 minutes. If no SMS arrives in that window the activation is cancelled automatically and the price is returned to your balance. Prices are in USD.\n\nGet your API key from your account at https://vio-sms.com.",
+    "contact": {
+      "name": "VioSMS Support",
+      "email": "support@vio-sms.com",
+      "url": "https://vio-sms.com/api-docs"
+    },
+    "termsOfService": "https://vio-sms.com/terms"
+  },
+  "externalDocs": {
+    "description": "API documentation",
+    "url": "https://vio-sms.com/api-docs"
+  },
+  "servers": [
+    {
+      "url": "https://vio-sms.com/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Account",
+      "description": "Balance"
+    },
+    {
+      "name": "Catalog",
+      "description": "Services and countries"
+    },
+    {
+      "name": "Activations",
+      "description": "Buy a number, read the code, cancel"
+    }
+  ],
+  "paths": {
+    "/balance": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "getBalance",
+        "summary": "Get account balance",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "balance": {
+                      "type": "number",
+                      "description": "Current balance in USD"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "example": "USD"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "balance": 15.5,
+                  "currency": "USD"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/services": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getServices",
+        "summary": "List services",
+        "description": "All services with their service code and lowest current price. Use `code` as the `service` parameter of `/buy`.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Service"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "data": [
+                    {
+                      "code": "wa",
+                      "name": "WhatsApp",
+                      "price": 0.25
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/countries": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getCountries",
+        "summary": "List countries",
+        "description": "All countries with their numeric code. Use `code` as the `country` parameter of `/buy`.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Country"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "data": [
+                    {
+                      "code": "6",
+                      "name": "Indonesia",
+                      "rus": "Индонезия"
+                    },
+                    {
+                      "code": "62",
+                      "name": "Turkey",
+                      "rus": "Турция"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/buy": {
+      "post": {
+        "tags": [
+          "Activations"
+        ],
+        "operationId": "buyNumber",
+        "summary": "Buy a number",
+        "description": "Rents a number for the given service and country. The price is deducted from your balance only when a number is issued.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "service",
+                  "country"
+                ],
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "description": "Service code from /services",
+                    "example": "wa"
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "Country code from /countries",
+                    "example": "16"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Optional operator",
+                    "default": "any"
+                  }
+                }
+              },
+              "example": {
+                "service": "wa",
+                "country": "16"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Purchase"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "data": {
+                    "id": "cmabc123xyz",
+                    "phone": "+447700900123",
+                    "price": 0.41,
+                    "expiresAt": "2026-10-27T12:20:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing parameter, or the service is not sold in this country",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Service not available for this country"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "description": "Insufficient balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "balance": {
+                      "type": "number"
+                    },
+                    "required": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Insufficient balance",
+                  "balance": 0.12,
+                  "required": 0.41
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account suspended, or service temporarily blocked after repeated failed activations",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the block ends (service_blocked only)",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceBlocked"
+                },
+                "example": {
+                  "error": "service_blocked",
+                  "message": "You are blocked from purchasing WhatsApp due to failed transactions. Try again in 12 minute(s).",
+                  "service": "WhatsApp",
+                  "serviceCode": "wa",
+                  "expiresAt": "2026-10-27T12:30:00.000Z",
+                  "remainingSeconds": 720
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "No numbers in stock right now (nothing is charged), or internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "No numbers available for this service/country right now. Please try another country."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "tags": [
+          "Activations"
+        ],
+        "operationId": "getStatus",
+        "summary": "Get activation status and SMS code",
+        "description": "Poll every ~5 seconds until `status` is `SMS_RECEIVED` (code in `smsCode`) or `CANCELLED`.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "description": "Activation id returned by /buy",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Activation"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "data": {
+                    "id": "cmabc123xyz",
+                    "status": "SMS_RECEIVED",
+                    "phone": "+447700900123",
+                    "smsCode": "456789",
+                    "smsText": "Your WhatsApp code: 456-789"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Missing activation id"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "No activation with this id on your account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Activation not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/cancel": {
+      "post": {
+        "tags": [
+          "Activations"
+        ],
+        "operationId": "cancelActivation",
+        "summary": "Cancel and refund",
+        "description": "Cancels a `WAITING` activation and refunds the price. Allowed from 2 minutes after buying; not possible once the SMS has arrived.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Activation id returned by /buy"
+                  }
+                }
+              },
+              "example": {
+                "id": "cmabc123xyz"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "message": "Activation cancelled and refunded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Too early (see retryAfter), SMS already received, or activation not WAITING",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until cancelling is allowed",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "retryAfter": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Activation can be cancelled only after 2 minutes. Try again in 45 seconds.",
+                  "retryAfter": 45
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "No activation with this id on your account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Activation not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "503": {
+            "description": "Cancellation temporarily failed, retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Could not cancel right now, please retry"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your VioSMS API key"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid API key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Invalid API key"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Account suspended or inactive",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Account is suspended or inactive"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Internal error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Internal server error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ServiceBlocked": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "service_blocked"
+          },
+          "message": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "serviceCode": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "remainingSeconds": {
+            "type": "integer"
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "wa"
+          },
+          "name": {
+            "type": "string",
+            "example": "WhatsApp"
+          },
+          "price": {
+            "type": "number",
+            "nullable": true,
+            "description": "Lowest current price in USD; null if not known yet"
+          }
+        }
+      },
+      "Country": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "62"
+          },
+          "name": {
+            "type": "string",
+            "example": "Turkey"
+          },
+          "rus": {
+            "type": "string",
+            "description": "Country name in Russian"
+          }
+        }
+      },
+      "Purchase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Activation id"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Charged price in USD, after your loyalty discount"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "20 minutes after purchase"
+          }
+        }
+      },
+      "Activation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WAITING",
+              "SMS_RECEIVED",
+              "COMPLETED",
+              "CANCELLED"
+            ],
+            "description": "WAITING: waiting for the SMS. SMS_RECEIVED: code arrived. COMPLETED: code received and the number window closed. CANCELLED: cancelled or expired, price refunded."
+          },
+          "phone": {
+            "type": "string"
+          },
+          "smsCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "smsText": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}
